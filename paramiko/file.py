@@ -22,7 +22,7 @@ from paramiko.common import (
     linefeed_byte,
     cr_byte_value,
 )
-from paramiko.py3compat import BytesIO, PY2, u, bytes_types, text_type
+from paramiko.py3compat import BytesIO, PY2, u, byte_ord, bytes_types, text_type
 
 from paramiko.util import ClosingContextManager
 
@@ -52,7 +52,7 @@ class BufferedFile(ClosingContextManager):
         self._flags = 0
         self._bufsize = self._DEFAULT_BUFSIZE
         self._wbuffer = BytesIO()
-        self._rbuffer = bytes()
+        self._rbuffer = bytearray()
         self._at_trailing_cr = False
         self._closed = False
         # pos - position within the file, according to the user
@@ -193,7 +193,7 @@ class BufferedFile(ClosingContextManager):
         if (size is None) or (size < 0):
             # go for broke
             result = self._rbuffer
-            self._rbuffer = bytes()
+            self._rbuffer = bytearray()
             self._pos += len(result)
             while True:
                 try:
@@ -205,12 +205,12 @@ class BufferedFile(ClosingContextManager):
                 result += new_data
                 self._realpos += len(new_data)
                 self._pos += len(new_data)
-            return result
+            return bytes(result)
         if size <= len(self._rbuffer):
             result = self._rbuffer[:size]
             self._rbuffer = self._rbuffer[size:]
             self._pos += len(result)
-            return result
+            return bytes(result)
         while len(self._rbuffer) < size:
             read_size = size - len(self._rbuffer)
             if self._flags & self.FLAG_BUFFERED:
@@ -226,7 +226,7 @@ class BufferedFile(ClosingContextManager):
         result = self._rbuffer[:size]
         self._rbuffer = self._rbuffer[size:]
         self._pos += len(result)
-        return result
+        return bytes(result)
 
     def readline(self, size=None):
         """
@@ -265,7 +265,7 @@ class BufferedFile(ClosingContextManager):
             ):
                 # edge case: the newline may be '\r\n' and we may have read
                 # only the first '\r' last time.
-                if line[0] == linefeed_byte_value:
+                if line[0] == byte_ord(linefeed_byte_value):
                     line = line[1:]
                     self._record_newline(crlf)
                 else:
@@ -292,9 +292,9 @@ class BufferedFile(ClosingContextManager):
             except EOFError:
                 new_data = None
             if (new_data is None) or (len(new_data) == 0):
-                self._rbuffer = bytes()
+                self._rbuffer = bytearray()
                 self._pos += len(line)
-                return line if self._flags & self.FLAG_BINARY else u(line)
+                return bytes(line) if self._flags & self.FLAG_BINARY else u(line)
             line += new_data
             self._realpos += len(new_data)
         # find the newline
@@ -306,12 +306,12 @@ class BufferedFile(ClosingContextManager):
         if pos == -1:
             # we couldn't find a newline in the truncated string, return it
             self._pos += len(line)
-            return line if self._flags & self.FLAG_BINARY else u(line)
+            return bytes(line) if self._flags & self.FLAG_BINARY else u(line)
         xpos = pos + 1
         if (
-            line[pos] == cr_byte_value
+            line[pos] == byte_ord(cr_byte_value)
             and xpos < len(line)
-            and line[xpos] == linefeed_byte_value
+            and line[xpos] == byte_ord(linefeed_byte_value)
         ):
             xpos += 1
         # if the string was truncated, _rbuffer needs to have the string after
@@ -322,7 +322,7 @@ class BufferedFile(ClosingContextManager):
         else:
             self._rbuffer = line[xpos:]
 
-        lf = line[pos:xpos]
+        lf = bytes(line[pos:xpos])
         line = line[:pos] + linefeed_byte
         if (len(self._rbuffer) == 0) and (lf == cr_byte):
             # we could read the line up to a '\r' and there could still be a
@@ -331,7 +331,7 @@ class BufferedFile(ClosingContextManager):
         else:
             self._record_newline(lf)
         self._pos += len(line)
-        return line if self._flags & self.FLAG_BINARY else u(line)
+        return bytes(line) if self._flags & self.FLAG_BINARY else u(line)
 
     def readlines(self, sizehint=None):
         """
